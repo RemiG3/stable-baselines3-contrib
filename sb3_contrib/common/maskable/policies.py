@@ -10,9 +10,10 @@ from stable_baselines3.common.torch_layers import (
     BaseFeaturesExtractor,
     CombinedExtractor,
     FlattenExtractor,
-    MlpExtractor,
+    # MlpExtractor,
     NatureCNN,
 )
+from sb3_contrib.common.torch_layers import MlpNetwork
 from stable_baselines3.common.type_aliases import Schedule
 from torch import nn
 
@@ -48,7 +49,7 @@ class MaskableActorCriticPolicy(BasePolicy):
         action_space: spaces.Space,
         lr_schedule: Schedule,
         net_arch: Optional[Union[List[int], Dict[str, List[int]]]] = None,
-        activation_fn: Type[nn.Module] = nn.Tanh,
+        activation_fn: Union[Type[nn.Module], List[Type[nn.Module]]] = nn.Tanh, # TODO: Change MlpExtractor (in stable_baselines_3) to support multiple activation functions
         ortho_init: bool = True,
         features_extractor_class: Type[BaseFeaturesExtractor] = FlattenExtractor,
         features_extractor_kwargs: Optional[Dict[str, Any]] = None,
@@ -56,6 +57,8 @@ class MaskableActorCriticPolicy(BasePolicy):
         normalize_images: bool = True,
         optimizer_class: Type[th.optim.Optimizer] = th.optim.Adam,
         optimizer_kwargs: Optional[Dict[str, Any]] = None,
+        dropout: Optional[Union[float, List[float]]] = 0.,
+        layer_norm: Optional[Union[bool, List[bool]]] = False,
     ):
         if optimizer_kwargs is None:
             optimizer_kwargs = {}
@@ -74,7 +77,9 @@ class MaskableActorCriticPolicy(BasePolicy):
             squash_output=False,
         )
 
+
         if isinstance(net_arch, list) and len(net_arch) > 0 and isinstance(net_arch[0], dict):
+            # TODO: Come back to previous version for net_arch
             warnings.warn(
                 (
                     "As shared layers in the mlp_extractor are removed since SB3 v1.8.0, "
@@ -94,6 +99,8 @@ class MaskableActorCriticPolicy(BasePolicy):
         self.net_arch = net_arch
         self.activation_fn = activation_fn
         self.ortho_init = ortho_init
+        self.dropout = dropout
+        self.layer_norm = layer_norm
 
         self.share_features_extractor = share_features_extractor
         self.features_extractor = self.make_features_extractor()
@@ -167,6 +174,8 @@ class MaskableActorCriticPolicy(BasePolicy):
                 optimizer_kwargs=self.optimizer_kwargs,
                 features_extractor_class=self.features_extractor_class,
                 features_extractor_kwargs=self.features_extractor_kwargs,
+                dropout=self.dropout,
+                layer_norm=self.layer_norm,
             )
         )
         return data
@@ -179,10 +188,12 @@ class MaskableActorCriticPolicy(BasePolicy):
         # Note: If net_arch is None and some features extractor is used,
         #       net_arch here is an empty list and mlp_extractor does not
         #       really contain any layers (acts like an identity module).
-        self.mlp_extractor = MlpExtractor(
+        self.mlp_extractor = MlpNetwork(
             self.features_dim,
             net_arch=self.net_arch,
             activation_fn=self.activation_fn,
+            layer_norm=self.layer_norm,
+            dropout=self.dropout,
             device=self.device,
         )
 
@@ -390,6 +401,8 @@ class MaskableActorCriticCnnPolicy(MaskableActorCriticPolicy):
         normalize_images: bool = True,
         optimizer_class: Type[th.optim.Optimizer] = th.optim.Adam,
         optimizer_kwargs: Optional[Dict[str, Any]] = None,
+        dropout: Union[float, List[float]] = 0.,
+        layer_norm: Optional[Union[bool, List[bool]]] = False,
     ):
         super().__init__(
             observation_space,
@@ -404,6 +417,8 @@ class MaskableActorCriticCnnPolicy(MaskableActorCriticPolicy):
             normalize_images,
             optimizer_class,
             optimizer_kwargs,
+            dropout,
+            layer_norm,
         )
 
 
@@ -444,6 +459,8 @@ class MaskableMultiInputActorCriticPolicy(MaskableActorCriticPolicy):
         normalize_images: bool = True,
         optimizer_class: Type[th.optim.Optimizer] = th.optim.Adam,
         optimizer_kwargs: Optional[Dict[str, Any]] = None,
+        dropout: Union[float, List[float]] = 0.,
+        layer_norm: Optional[Union[bool, List[bool]]] = False,
     ):
         super().__init__(
             observation_space,
@@ -458,4 +475,6 @@ class MaskableMultiInputActorCriticPolicy(MaskableActorCriticPolicy):
             normalize_images,
             optimizer_class,
             optimizer_kwargs,
+            dropout,
+            layer_norm,
         )

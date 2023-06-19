@@ -1,0 +1,69 @@
+{
+    "schema_name": "template_station",
+    "seed": 10,
+    "step_time": 15,
+    
+    "number_of_days": 1,
+    "price_flag": 1,
+    "solar_flag": 1,
+    "grid_limit": 130.0,
+
+    "profit_model": "Not done",
+    "comment on profit_model": "value in  {energy, time, flat, flat+supp}",
+    
+    "Types_of_EV": {
+        "classic": {
+            "capacity": 30,
+            "chargers_type_compatibilities": ["low", "medium", "high"]
+        },
+        "test": {
+            "capacity": 20,
+            "chargers_type_compatibilities": ["low"]
+        }
+    },
+    "EV_config": {
+        "considered_ev": ["classic", "test"]
+    },
+
+    "Types_of_chargers": {
+        "low": {
+            "charging_rate": 11,
+            "discharging_rate": [6, 11],
+            "charging_efficiency": 0.91,
+            "discharging_efficiency": 0.91
+        },
+        "medium": {
+            "charging_rate": 22,
+            "discharging_rate": [11, 22],
+            "charging_efficiency": 0.91,
+            "discharging_efficiency": 0.91
+        },
+        "high": {
+            "charging_rate": 43,
+            "discharging_rate": 43,
+            "charging_efficiency": 0.91,
+            "discharging_efficiency": 0.91
+        }
+    },
+    "Chargers_config": {
+        "previous_list_chargers": ["low", "low", "low", "low", "low"],
+		"previous_list_chargers2": ["low", "low", "low", "low", "low", "medium", "medium", "medium", "high", "high"],
+        "list_chargers": ["low", "low", "low", "low", "low", "low", "low", "low", "low", "low"],
+        "comment on list_chargers": "value in Types_of_chargers",
+        
+        "preemptive": 0,
+        "comment on preemptive": "value in {0, 1}",
+
+        "use_V2G": 0,
+        "comment on use_V2G": "value in {0, 1}",
+
+        "charging_mode": "constant",
+        "comment on charging_mode": "value in [variable, constant, discrete]"
+    },
+
+    "PV_params": {
+        "number": 20,
+        "surface": {"length": 2.279, "width": 1.134},
+        "efficiency": 0.21
+    }
+}

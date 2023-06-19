@@ -9,9 +9,10 @@ from stable_baselines3.common.torch_layers import (
     BaseFeaturesExtractor,
     CombinedExtractor,
     FlattenExtractor,
-    MlpExtractor,
+    # MlpExtractor,
     NatureCNN,
 )
+from sb3_contrib.common.torch_layers import MlpNetwork
 from stable_baselines3.common.type_aliases import Schedule
 from stable_baselines3.common.utils import zip_strict
 from torch import nn
@@ -67,7 +68,7 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         action_space: spaces.Space,
         lr_schedule: Schedule,
         net_arch: Optional[Union[List[int], Dict[str, List[int]]]] = None,
-        activation_fn: Type[nn.Module] = nn.Tanh,
+        activation_fn: Union[Type[nn.Module], List[Type[nn.Module]]] = nn.Tanh, # TODO: Change MlpExtractor (in stable_baselines_3) to support multiple activation functions
         ortho_init: bool = True,
         use_sde: bool = False,
         log_std_init: float = 0.0,
@@ -84,9 +85,18 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         n_lstm_layers: int = 1,
         shared_lstm: bool = False,
         enable_critic_lstm: bool = True,
-        lstm_kwargs: Optional[Dict[str, Any]] = None,
+        dropout: Union[float, List[float]] = 0.,
+        dropout_actor: Union[float, List[float]] = 0., # If shared then dropout_actor is used for both actor and critic
+        dropout_critic: Union[float, List[float]] = 0.,
+        layer_norm: Optional[Union[bool, List[bool]]] = False,
+        layer_norm_actor: Optional[Union[bool, List[bool]]] = False, # If shared then layer_norm_actor is used for both actor and critic
+        layer_norm_critic: Optional[Union[bool, List[bool]]] = False,
+        lstm_kwargs: Optional[Dict[str, Any]] = None, # Can define dropout and bidirectional params inside LSTMs
     ):
         self.lstm_output_dim = lstm_hidden_size
+        self.dropout = dropout
+        self.layer_norm = layer_norm
+
         super().__init__(
             observation_space,
             action_space,
@@ -121,6 +131,11 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         self.lstm_hidden_state_shape = (n_lstm_layers, 1, lstm_hidden_size)
         self.critic = None
         self.lstm_critic = None
+        self.dropout_actor = nn.Dropout(p=dropout_actor)
+        self.dropout_critic = nn.Dropout(p=dropout_critic)
+        self.layer_norm_actor = nn.LayerNorm(normalized_shape=lstm_hidden_size) if layer_norm_actor else nn.Identity()
+        self.layer_norm_critic = nn.LayerNorm(normalized_shape=lstm_hidden_size) if layer_norm_critic else nn.Identity()
+        
         assert not (
             self.shared_lstm and self.enable_critic_lstm
         ), "You must choose between shared LSTM, seperate or no LSTM for the critic."
@@ -152,10 +167,12 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         Create the policy and value networks.
         Part of the layers can be shared.
         """
-        self.mlp_extractor = MlpExtractor(
+        self.mlp_extractor = MlpNetwork(
             self.lstm_output_dim,
             net_arch=self.net_arch,
             activation_fn=self.activation_fn,
+            layer_norm=self.layer_norm,
+            dropout=self.dropout,
             device=self.device,
         )
 
@@ -230,13 +247,17 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         # Preprocess the observation if needed
         features = self.extract_features(obs)
         if self.share_features_extractor:
-            pi_features = vf_features = features  # alis
+            pi_features = vf_features = features  # alias
         else:
             pi_features, vf_features = features
         # latent_pi, latent_vf = self.mlp_extractor(features)
         latent_pi, lstm_states_pi = self._process_sequence(pi_features, lstm_states.pi, episode_starts, self.lstm_actor)
+        latent_pi = self.layer_norm_actor(latent_pi)
+        latent_pi = self.dropout_actor(latent_pi)
         if self.lstm_critic is not None:
             latent_vf, lstm_states_vf = self._process_sequence(vf_features, lstm_states.vf, episode_starts, self.lstm_critic)
+            latent_vf = self.layer_norm_critic(latent_vf)
+            latent_vf = self.dropout_critic(latent_vf)
         elif self.shared_lstm:
             # Re-use LSTM features but do not backpropagate
             latent_vf = latent_pi.detach()
@@ -248,6 +269,7 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
 
         latent_pi = self.mlp_extractor.forward_actor(latent_pi)
         latent_vf = self.mlp_extractor.forward_critic(latent_vf)
+        # TODO: Test to place layer_norm and dropout HERE
 
         # Evaluate the values for the given observations
         values = self.value_net(latent_vf)

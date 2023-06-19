@@ -1,10 +1,11 @@
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional, Type, Union
 
 import torch as th
 from gymnasium import spaces
 from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.preprocessing import get_action_dim
-from stable_baselines3.common.torch_layers import BaseFeaturesExtractor, create_mlp
+from stable_baselines3.common.torch_layers import BaseFeaturesExtractor#, create_mlp
+from sb3_contrib.common.torch_layers import create_mlp
 from torch import nn
 
 
@@ -26,7 +27,9 @@ class ARSPolicy(BasePolicy):
         observation_space: spaces.Space,
         action_space: spaces.Space,
         net_arch: Optional[List[int]] = None,
-        activation_fn: Type[nn.Module] = nn.ReLU,
+        activation_fn: Optional[Union[Type[nn.Module], List[Type[nn.Module]]]] = nn.ReLU,
+        dropout: Optional[Union[float, List[float]]] = 0.,
+        layer_norm: Optional[Union[bool, List[bool]]] = False,
         with_bias: bool = True,
         squash_output: bool = True,
     ):
@@ -43,14 +46,16 @@ class ARSPolicy(BasePolicy):
         self.features_extractor = self.make_features_extractor()
         self.features_dim = self.features_extractor.features_dim
         self.activation_fn = activation_fn
+        self.dropout = dropout
+        self.layer_norm = layer_norm
 
         if isinstance(action_space, spaces.Box):
             action_dim = get_action_dim(action_space)
             actor_net = create_mlp(
-                self.features_dim, action_dim, net_arch, activation_fn, with_bias=with_bias, squash_output=squash_output
+                self.features_dim, action_dim, net_arch, activation_fn, self.layer_norm, self.dropout, with_bias=with_bias, squash_output=squash_output
             )
         elif isinstance(action_space, spaces.Discrete):
-            actor_net = create_mlp(self.features_dim, int(action_space.n), net_arch, activation_fn, with_bias=with_bias)
+            actor_net = create_mlp(self.features_dim, int(action_space.n), net_arch, activation_fn, self.layer_norm, self.dropout, with_bias=with_bias)
         else:
             raise NotImplementedError(f"Error: ARS policy not implemented for action space of type {type(action_space)}.")
 
@@ -63,6 +68,8 @@ class ARSPolicy(BasePolicy):
             action_space=self.action_space,
             net_arch=self.net_arch,
             activation_fn=self.activation_fn,
+            layer_norm=self.layer_norm,
+            dropout=self.dropout,
         )
         return data
 

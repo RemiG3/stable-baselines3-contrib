@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional, Type, Union
 
 import torch as th
 from gymnasium import spaces
@@ -8,8 +8,9 @@ from stable_baselines3.common.torch_layers import (
     CombinedExtractor,
     FlattenExtractor,
     NatureCNN,
-    create_mlp,
+    # create_mlp,
 )
+from sb3_contrib.common.torch_layers import create_mlp
 from stable_baselines3.common.type_aliases import Schedule
 from torch import nn
 
@@ -37,7 +38,9 @@ class QuantileNetwork(BasePolicy):
         features_dim: int,
         n_quantiles: int = 200,
         net_arch: Optional[List[int]] = None,
-        activation_fn: Type[nn.Module] = nn.ReLU,
+        activation_fn: Optional[Union[Type[nn.Module], List[Type[nn.Module]]]] = nn.ReLU,
+        dropout: Optional[Union[float, List[float]]] = 0.,
+        layer_norm: Optional[Union[bool, List[bool]]] = False,
         normalize_images: bool = True,
     ):
         super().__init__(
@@ -52,10 +55,12 @@ class QuantileNetwork(BasePolicy):
 
         self.net_arch = net_arch
         self.activation_fn = activation_fn
+        self.dropout = dropout
+        self.layer_norm = layer_norm
         self.features_dim = features_dim
         self.n_quantiles = n_quantiles
         action_dim = int(self.action_space.n)  # number of actions
-        quantile_net = create_mlp(self.features_dim, action_dim * self.n_quantiles, self.net_arch, self.activation_fn)
+        quantile_net = create_mlp(self.features_dim, action_dim * self.n_quantiles, self.net_arch, self.activation_fn, self.layer_norm, self.dropout)
         self.quantile_net = nn.Sequential(*quantile_net)
 
     def forward(self, obs: th.Tensor) -> th.Tensor:
@@ -84,6 +89,8 @@ class QuantileNetwork(BasePolicy):
                 n_quantiles=self.n_quantiles,
                 activation_fn=self.activation_fn,
                 features_extractor=self.features_extractor,
+                layer_norm=self.layer_norm,
+                dropout=self.dropout,
             )
         )
         return data
@@ -121,6 +128,8 @@ class QRDQNPolicy(BasePolicy):
         n_quantiles: int = 200,
         net_arch: Optional[List[int]] = None,
         activation_fn: Type[nn.Module] = nn.ReLU,
+        dropout: Optional[Union[float, List[float]]] = 0.,
+        layer_norm: Optional[Union[bool, List[bool]]] = False,
         features_extractor_class: Type[BaseFeaturesExtractor] = FlattenExtractor,
         features_extractor_kwargs: Optional[Dict[str, Any]] = None,
         normalize_images: bool = True,
@@ -146,6 +155,8 @@ class QRDQNPolicy(BasePolicy):
         self.n_quantiles = n_quantiles
         self.net_arch = net_arch
         self.activation_fn = activation_fn
+        self.dropout = dropout
+        self.layer_norm = layer_norm
 
         self.net_args = {
             "observation_space": self.observation_space,
@@ -153,6 +164,8 @@ class QRDQNPolicy(BasePolicy):
             "n_quantiles": self.n_quantiles,
             "net_arch": self.net_arch,
             "activation_fn": self.activation_fn,
+            'dropout': self.dropout,
+            'layer_norm': self.layer_norm,
             "normalize_images": normalize_images,
         }
         self._build(lr_schedule)
@@ -195,6 +208,8 @@ class QRDQNPolicy(BasePolicy):
                 n_quantiles=self.net_args["n_quantiles"],
                 net_arch=self.net_args["net_arch"],
                 activation_fn=self.net_args["activation_fn"],
+                dropout=self.net_args["dropout"],
+                layer_norm=self.net_args["layer_norm"],
                 lr_schedule=self._dummy_schedule,  # dummy lr schedule, not needed for loading policy alone
                 optimizer_class=self.optimizer_class,
                 optimizer_kwargs=self.optimizer_kwargs,
@@ -244,6 +259,8 @@ class CnnPolicy(QRDQNPolicy):
         n_quantiles: int = 200,
         net_arch: Optional[List[int]] = None,
         activation_fn: Type[nn.Module] = nn.ReLU,
+        dropout: Optional[Union[float, List[float]]] = 0.,
+        layer_norm: Optional[Union[bool, List[bool]]] = False,
         features_extractor_class: Type[BaseFeaturesExtractor] = NatureCNN,
         features_extractor_kwargs: Optional[Dict[str, Any]] = None,
         normalize_images: bool = True,
@@ -257,6 +274,8 @@ class CnnPolicy(QRDQNPolicy):
             n_quantiles,
             net_arch,
             activation_fn,
+            dropout,
+            layer_norm,
             features_extractor_class,
             features_extractor_kwargs,
             normalize_images,

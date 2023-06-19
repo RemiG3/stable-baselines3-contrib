@@ -10,9 +10,10 @@ from stable_baselines3.common.torch_layers import (
     CombinedExtractor,
     FlattenExtractor,
     NatureCNN,
-    create_mlp,
+    # create_mlp,
     get_actor_critic_arch,
 )
+from sb3_contrib.common.torch_layers import create_mlp
 from stable_baselines3.common.type_aliases import Schedule
 from torch import nn as nn
 
@@ -53,7 +54,9 @@ class Actor(BasePolicy):
         net_arch: List[int],
         features_extractor: nn.Module,
         features_dim: int,
-        activation_fn: Type[nn.Module] = nn.ReLU,
+        activation_fn: Union[Type[nn.Module], List[Type[nn.Module]]] = nn.ReLU,
+        dropout: Union[float, List[float]] = 0.,
+        layer_norm: Optional[Union[bool, List[bool]]] = False,
         use_sde: bool = False,
         log_std_init: float = -3,
         full_std: bool = True,
@@ -75,13 +78,15 @@ class Actor(BasePolicy):
         self.net_arch = net_arch
         self.features_dim = features_dim
         self.activation_fn = activation_fn
+        self.dropout = dropout
+        self.layer_norm = layer_norm
         self.log_std_init = log_std_init
         self.use_expln = use_expln
         self.full_std = full_std
         self.clip_mean = clip_mean
 
         action_dim = get_action_dim(self.action_space)
-        latent_pi_net = create_mlp(features_dim, -1, net_arch, activation_fn)
+        latent_pi_net = create_mlp(features_dim, -1, net_arch, activation_fn, self.layer_norm, self.dropout, with_bias=True)
         self.latent_pi = nn.Sequential(*latent_pi_net)
         last_layer_dim = net_arch[-1] if len(net_arch) > 0 else features_dim
 
@@ -115,6 +120,8 @@ class Actor(BasePolicy):
                 use_expln=self.use_expln,
                 features_extractor=self.features_extractor,
                 clip_mean=self.clip_mean,
+                layer_norm=self.layer_norm,
+                dropout=self.dropout,
             )
         )
         return data
@@ -205,6 +212,8 @@ class Critic(BaseModel):
         features_extractor: BaseFeaturesExtractor,
         features_dim: int,
         activation_fn: Type[nn.Module] = nn.ReLU,
+        dropout: Union[float, List[float]] = 0.,
+        layer_norm: Union[bool, List[bool]] = False,
         normalize_images: bool = True,
         n_quantiles: int = 25,
         n_critics: int = 2,
@@ -226,7 +235,7 @@ class Critic(BaseModel):
         self.quantiles_total = n_quantiles * n_critics
 
         for i in range(n_critics):
-            qf_net_list = create_mlp(features_dim + action_dim, n_quantiles, net_arch, activation_fn)
+            qf_net_list = create_mlp(features_dim + action_dim, n_quantiles, net_arch, activation_fn, dropout, layer_norm, with_bias=True)
             qf_net = nn.Sequential(*qf_net_list)
             self.add_module(f"qf{i}", qf_net)
             self.q_networks.append(qf_net)
@@ -282,6 +291,8 @@ class TQCPolicy(BasePolicy):
         lr_schedule: Schedule,
         net_arch: Optional[Union[List[int], Dict[str, List[int]]]] = None,
         activation_fn: Type[nn.Module] = nn.ReLU,
+        dropout: Optional[Union[float, List[float]]] = 0.,
+        layer_norm: Optional[Union[bool, List[bool]]] = False,
         use_sde: bool = False,
         log_std_init: float = -3,
         use_expln: bool = False,
@@ -318,6 +329,8 @@ class TQCPolicy(BasePolicy):
             "action_space": self.action_space,
             "net_arch": actor_arch,
             "activation_fn": self.activation_fn,
+            "dropout": dropout,
+            "layer_norm": layer_norm,
             "normalize_images": normalize_images,
         }
         self.actor_kwargs = self.net_args.copy()
@@ -380,6 +393,8 @@ class TQCPolicy(BasePolicy):
             dict(
                 net_arch=self.net_arch,
                 activation_fn=self.net_args["activation_fn"],
+                dropout=self.net_args["dropout"],
+                layer_norm=self.net_args["layer_norm"],
                 use_sde=self.actor_kwargs["use_sde"],
                 log_std_init=self.actor_kwargs["log_std_init"],
                 use_expln=self.actor_kwargs["use_expln"],
@@ -466,6 +481,8 @@ class CnnPolicy(TQCPolicy):
         lr_schedule: Schedule,
         net_arch: Optional[Union[List[int], Dict[str, List[int]]]] = None,
         activation_fn: Type[nn.Module] = nn.ReLU,
+        dropout: Optional[Union[float, List[float]]] = 0.,
+        layer_norm: Optional[Union[bool, List[bool]]] = False,
         use_sde: bool = False,
         log_std_init: float = -3,
         use_expln: bool = False,
@@ -485,6 +502,8 @@ class CnnPolicy(TQCPolicy):
             lr_schedule,
             net_arch,
             activation_fn,
+            dropout,
+            layer_norm,
             use_sde,
             log_std_init,
             use_expln,
@@ -535,6 +554,8 @@ class MultiInputPolicy(TQCPolicy):
         lr_schedule: Schedule,
         net_arch: Optional[Union[List[int], Dict[str, List[int]]]] = None,
         activation_fn: Type[nn.Module] = nn.ReLU,
+        dropout: Optional[Union[float, List[float]]] = 0.,
+        layer_norm: Optional[Union[bool, List[bool]]] = False,
         use_sde: bool = False,
         log_std_init: float = -3,
         use_expln: bool = False,
@@ -554,6 +575,8 @@ class MultiInputPolicy(TQCPolicy):
             lr_schedule,
             net_arch,
             activation_fn,
+            dropout,
+            layer_norm,
             use_sde,
             log_std_init,
             use_expln,
